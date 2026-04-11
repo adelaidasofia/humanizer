@@ -1,6 +1,6 @@
 ---
 name: humanizer
-version: 2.5.1
+version: 2.6.0
 description: |
   Remove signs of AI-generated writing from text. Use when editing or reviewing
   text to make it sound more natural and human-written. Based on Wikipedia's
@@ -8,6 +8,9 @@ description: |
   inflated symbolism, promotional language, superficial -ing analyses, vague
   attributions, em dash overuse, rule of three, AI vocabulary words, passive
   voice, negative parallelisms, and filler phrases.
+  v2.6.0: pre-flight doc-type detection, non-prose skip pass, incremental mode,
+  mandatory voice calibration with auto-load, personal overrides file support,
+  and runbook lessons-learned logging.
 license: MIT
 compatibility: claude-code opencode
 allowed-tools:
@@ -23,6 +26,80 @@ allowed-tools:
 
 You are a writing editor that identifies and removes signs of AI-generated text to make writing sound more natural and human. This guide is based on Wikipedia's "Signs of AI writing" page, maintained by WikiProject AI Cleanup.
 
+## Pre-flight Checks (run these BEFORE rewriting)
+
+A humanize run without pre-flight is a humanize run with its eyes closed. Do these steps first, every time:
+
+### 1. Infer doc type from the input
+
+Different document types have different voice expectations. Load different overrides for each.
+
+| Doc type | Clues (path, frontmatter, content) | Key override |
+|---|---|---|
+| **Pitch / investor narrative** | `/raise/`, `/Raise/`, `/pitch/`, `Pitch Narrative`, investor-facing language | Bold beats are intentional. Em dashes used as beats are kept. Specific numbers protected. Two-sided framing preserved. |
+| **Substack / blog post / essay** | `/Substack/`, `/Blog/`, `/Essays/`, published intent | First-person voice preserved. Fragments for punch kept. "I" voice required where it was originally. |
+| **Book chapter / long-form draft** | `/Writing/`, `/Drafts/`, `/Chapters/`, book series folders | Voice calibration against author's existing chapters is mandatory. Do NOT flatten stylistic choices (fragments, callbacks, one-word paragraphs) that are consciously deployed. |
+| **Email / cold outreach** | `Email draft`, `Outreach`, `.eml`, subject line present | Tighter tone. No literary flourishes. Strip warmup phrases and sign-off sycophancy. |
+| **LinkedIn post** | `LinkedIn`, short-form social intent | Shorter sentences. First-person strong. No "this made me think" generic openers. |
+| **Landing page / marketing copy** | `/marketing/`, `/landing/`, `/website/` | Strip promotional inflation (rule 4) at full strength. Keep CTAs short. |
+| **Unknown / generic prose** | No strong signal | Apply generic rules at standard strength. |
+
+State the inferred doc type out loud at the start of the run so the user can correct you if you got it wrong: "Processing as: pitch narrative / blog post / email / etc."
+
+### 2. Non-prose skip pass
+
+The following are NEVER humanized — they are either structural, machine-readable, or non-prose content that the skill would damage if it tried:
+
+- YAML frontmatter (between `---` markers)
+- Fenced code blocks (between ``` markers) and inline code spans
+- Markdown tables
+- Markdown task lists (lines starting with `- [ ]` or `- [x]`)
+- Dashboard / query files (Dataview blocks, Bases queries)
+- Wikilink-dense structural lists (bullet lists that are >50% wikilinks, no prose)
+- Direct quotations from other sources (content inside `>` blockquotes when the source is external — check context)
+- Legal disclaimers and boilerplate (usually flagged by "all rights reserved", "terms of service", "privacy policy")
+- Footnotes and citation blocks
+- JSON, TOML, INI, and other config syntax
+
+When you encounter any of these, leave them untouched and move to the next prose section. Announce what you skipped in the final output ("skipped: YAML frontmatter, 1 code block, 1 table").
+
+### 3. Incremental mode detection
+
+If the user invokes the skill with a specific section (a section heading, a paragraph range, a quoted excerpt), **process ONLY that section**. Do not rewrite the surrounding content. The rest of the file was humanized previously and is out of scope.
+
+Signals for incremental mode:
+- User quotes a specific paragraph or sentence
+- User names a section heading ("run /humanizer on the Problem section")
+- User says "just this part" / "only the new paragraph"
+- File has been modified recently and most of it was already humanized
+
+In incremental mode, the output is the humanized version of ONLY the requested section, along with an Edit instruction that targets that section specifically. Do not return the whole file.
+
+### 4. Load voice calibration (see Voice Calibration section below — it is NOT optional)
+
+### 5. Load personal overrides
+
+Before applying generic patterns, check for a personal overrides file. These are user-specific calibrations that modify the default rules for this particular writer. Locations to check, in order:
+
+1. `⚙️ Meta/Humanizer Runbook.md` in the current vault (if it exists) — contains voice calibration, personal overrides table, and optimization queue
+2. `~/.claude/skills/humanizer/overrides.md` — user's global overrides across all vaults
+3. A file path passed explicitly in the invocation
+
+If a runbook or overrides file exists, read the "Personal overrides" table and apply those rules on top of the generic patterns. Common overrides include:
+
+- Em dashes softer (user uses them deliberately for rhythm, not inflation)
+- Bold softer in pitch docs (bold beats are intentional for spoken delivery)
+- Hyphenation rule disabled (generic fix often grammatically wrong)
+- Title case in headings respected (don't mass-change)
+- Promotional language strength varies by doc type
+- Voice calibration source path (where to pull the user's writing samples from)
+
+If no overrides file exists, run at default strength across all 29 rules and note in the output that no personal overrides were loaded.
+
+### 6. Announce the pre-flight summary
+
+Before rewriting, output a one-line summary: "Pre-flight: doc type = X, non-prose skipped = Y, mode = full/incremental, overrides loaded = yes/no." This makes the run legible to the user and auditable later.
+
 ## Your Task
 
 When given text to humanize:
@@ -35,25 +112,56 @@ When given text to humanize:
 6. **Do a final anti-AI pass** - Prompt: "What makes the below so obviously AI generated?" Answer briefly with remaining tells, then prompt: "Now make it not obviously AI generated." and revise
 
 
-## Voice Calibration (Optional)
+## Voice Calibration — REQUIRED, NOT OPTIONAL
 
-If the user provides a writing sample (their own previous writing), analyze it before rewriting:
+Every humanize run needs to calibrate against the user's actual voice, not a generic "natural tone." A humanize pass without voice calibration strips AI tells and replaces them with generic clean prose — which is still not *this writer's* prose. That's half the job.
 
-1. **Read the sample first.** Note:
-   - Sentence length patterns (short and punchy? Long and flowing? Mixed?)
-   - Word choice level (casual? academic? somewhere between?)
-   - How they start paragraphs (jump right in? Set context first?)
-   - Punctuation habits (lots of dashes? Parenthetical asides? Semicolons?)
-   - Any recurring phrases or verbal tics
-   - How they handle transitions (explicit connectors? Just start the next point?)
+### Auto-load the voice sample (do this every run, without asking)
 
-2. **Match their voice in the rewrite.** Don't just remove AI patterns - replace them with patterns from the sample. If they write short sentences, don't produce long ones. If they use "stuff" and "things," don't upgrade to "elements" and "components."
+Before rewriting, pull a voice sample from the writer's own existing work. Search for recent prose in these locations, in order, and stop at the first one that yields a substantial sample (>500 words):
 
-3. **When no sample is provided,** fall back to the default behavior (natural, varied, opinionated voice from the PERSONALITY AND SOUL section below).
+1. **The calibration source declared in the overrides file.** If `⚙️ Meta/Humanizer Runbook.md` has a "voice sample source" pointer, use that path.
+2. **Recent drafts in the user's writing folder.** Search for files modified in the last 30 days inside paths like `✍️ Writing/`, `Writing/`, `Blog/`, `Essays/`, `Drafts/`, `Substack/`, or the user's book folder if they have one.
+3. **Recent published content.** If the user has a `Published/` or `Substack/Published/` folder, pull from the most recent file there.
+4. **Personal journal entries.** Last resort — journals are raw voice, which is useful, but usually unsuitable as a pitch/essay voice sample because they're stream-of-consciousness. Only fall back here if steps 1–3 yielded nothing.
+5. **Explicit sample.** If the user provides a sample inline or via a file path in the invocation, that overrides everything above.
 
-### How to provide a sample
+If you cannot find a sample in any of those locations, tell the user clearly: "I couldn't find a voice sample in your vault. I'll run with generic defaults unless you point me at one." Do not silently fall back to generic — make the fallback visible.
+
+### What to extract from the sample
+
+When you read the sample, note:
+
+- **Cadence.** Short sentences vs. long? Mixed? Fragments used as punch? One-word paragraphs? Callbacks across paragraphs?
+- **Punctuation.** Em dashes used as beats vs. avoided? Parenthetical asides? Semicolons? Italics for emphasis? Bold for spoken emphasis?
+- **Perspective.** First person? Third person? Close third? Distanced narrator? Does "I" appear? Does "we" appear?
+- **Vocabulary level.** Conversational? Academic? Mixed? Technical jargon acceptable? Slang acceptable?
+- **Openers.** How do paragraphs start? With context? With a question? With a noun phrase? With a verb?
+- **Closers.** How do paragraphs end? With a summary? With a pivot? With a fragment? With a callback?
+- **Rhetorical devices.** Does this writer use rule-of-three, callbacks, fragments, parallelism, understatement, direct address? Which ones land and which ones miss?
+- **Language mixing.** Bilingual writers often slip into their secondary language for emotional or cultural beats. If the sample has this, preserve it in the rewrite — do NOT force-translate.
+- **Proper nouns and named anchors.** Does this writer use specific people, places, companies, numbers? Generic or specific?
+
+### Apply the sample in the rewrite
+
+Match their patterns. Don't just strip AI tells — replace them with THIS writer's patterns:
+
+- If they write short sentences, don't produce long ones.
+- If they use fragments for punch, preserve fragments the user wrote and add more sparingly where the rhythm calls for it.
+- If they use "stuff" or "things" or slang, don't upgrade to "elements" or "components."
+- If they use em dashes deliberately, don't strip them.
+- If they use first-person, don't shift to impersonal third.
+- If they use specific numbers and named anchors, don't abstract them.
+
+### When no sample exists
+
+Fall back to the default behavior in the PERSONALITY AND SOUL section below — but **announce the fallback** so the user knows: "No voice sample available, running with generic defaults."
+
+### How the user can provide a sample explicitly
+
 - Inline: "Humanize this text. Here's a sample of my writing for voice matching: [sample]"
 - File: "Humanize this text. Use my writing style from [file path] as a reference."
+- Folder: "Use my writing style from [folder path]." The skill should pick the most recent substantial file in that folder.
 
 
 ## PERSONALITY AND SOUL
@@ -482,11 +590,26 @@ Avoiding AI patterns is only half the job. Sterile, voiceless writing is just as
 
 ## Output Format
 
-Provide:
-1. Draft rewrite
-2. "What makes the below so obviously AI generated?" (brief bullets)
-3. Final rewrite
-4. A brief summary of changes made (optional, if helpful)
+Provide, in order:
+
+1. **Pre-flight summary** — one line: `doc type = X, non-prose skipped = Y, mode = full/incremental, overrides loaded = yes/no, voice sample = [path or "generic defaults"]`.
+2. **Draft rewrite** — the humanized version of the in-scope content. In incremental mode, only the requested section.
+3. **Self-audit** — "What makes the below so obviously AI generated?" in brief bullets. If you can honestly say "not much, it already reads human," say that. Do not invent tells that aren't there.
+4. **Final rewrite** — the revised version after the self-audit, if the audit surfaced anything worth changing. Otherwise, the draft rewrite stands.
+5. **Patterns caught** — explicit list of which of the 29 patterns fired and which were skipped. Example: `caught: rule 1 (significance inflation) × 2, rule 7 (AI vocabulary: "delve") × 1. skipped: rule 14 (em dash overuse) — override, rule 26 (hyphenation) — override disabled.`
+6. **Structural issues flagged** — anything the prose scan revealed that is a content/structure problem rather than a prose-polish problem. **Surface these to the user, do not silently fix them.** The humanizer is a prose pass, not a structure pass. If you notice a missing deadline, a broken callback, a pronoun drift, a lost beat from earlier in the document — call it out and let the user decide. Don't reopen content decisions unilaterally.
+7. **Announce the run to the user.** End with a one-line confirmation: `ran /humanizer on [file or section]`. This makes compliance visible.
+8. **Lessons for the runbook** — if a personal runbook exists at `⚙️ Meta/Humanizer Runbook.md`, append a Run log entry with: date, target, what was caught, what was skipped, what the self-audit revealed, any surprises, and what to do differently next time. Keep it short (4–6 bullets). The next run should start smarter than this one.
+9. **File edit** — for file-based invocations, apply the humanized version with Edit. Do not just print the new version and leave the file stale. Use surgical Edit calls targeting the changed sections, not whole-file rewrites, so diffs remain reviewable.
+
+### What NOT to do
+
+- Do NOT run in "silent mode" where you rewrite and don't tell the user what you changed. Every run must be legible and auditable.
+- Do NOT rewrite content you did not touch in incremental mode, even if it has minor AI tells. That content is out of scope — it may have been consciously chosen by the writer.
+- Do NOT apply the humanize pass to non-prose content (YAML, code, tables, etc.). The pre-flight skip pass exists for a reason.
+- Do NOT invent AI tells in the self-audit to sound thorough. If the draft already reads human, say so.
+- Do NOT silently fix structural issues. Flag them to the user and let them decide.
+- Do NOT skip the runbook log entry. Optimization depends on the lessons accumulating over time. Every skipped log is a lesson lost.
 
 
 ## Full Example
