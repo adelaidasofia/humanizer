@@ -1,6 +1,6 @@
 ---
 name: humanizer
-version: 2.6.0
+version: 2.7.0
 description: |
   Remove signs of AI-generated writing from text. Use when editing or reviewing
   text to make it sound more natural and human-written. Based on Wikipedia's
@@ -11,6 +11,10 @@ description: |
   v2.6.0: pre-flight doc-type detection, non-prose skip pass, incremental mode,
   mandatory voice calibration with auto-load, personal overrides file support,
   and runbook lessons-learned logging.
+  v2.7.0: Spanish-language rule library (with bilingual/Spanglish handling),
+  AI-iness density check for adaptive pass strength (light/mixed/full), and
+  four-tier ROI-ranked pattern ordering so time-constrained runs hit the
+  highest-signal rules first.
 license: MIT
 compatibility: claude-code opencode
 allowed-tools:
@@ -75,9 +79,46 @@ Signals for incremental mode:
 
 In incremental mode, the output is the humanized version of ONLY the requested section, along with an Edit instruction that targets that section specifically. Do not return the whole file.
 
-### 4. Load voice calibration (see Voice Calibration section below — it is NOT optional)
+### 4. Detect the language of the input
 
-### 5. Load personal overrides
+The 29-pattern library is **English-only**. Applying it to non-English prose will produce bad rewrites because most rules target English-specific AI tells.
+
+**Detection signals:**
+- YAML frontmatter `lang:` field if present
+- Content heuristics: Spanish articles (el, la, los, las), diacritics (á, é, í, ñ), common Spanish words (que, de, para, con); French (le, la, de, et, est); Portuguese (o, a, de, que, é); German (der, die, das, und, ist); etc.
+- User's explicit invocation ("humanize this Spanish text")
+- The file path — Adelaida's vault conventions use `🌱 Curiosities/Colombia` and Spanish wikilinks for bilingual content
+
+**When the input is Spanish:**
+
+Switch to Spanish mode. Do NOT silently apply English patterns. Spanish-specific AI tells to watch for (apply these instead of the English rule library):
+
+- **Inflated connectors:** *en este sentido, cabe destacar, es importante señalar, a su vez, por otro lado, en definitiva, sin lugar a dudas, en consecuencia, dicho lo anterior, dicho esto*
+- **Formulaic openers:** *En el mundo actual, En la era digital, En un panorama cada vez más, Hoy en día, En los últimos años*
+- **Promotional inflation:** *innovador, revolucionario, disruptivo, paradigmático, de vanguardia, emblemático, imprescindible*
+- **Spanish copula avoidance:** *se erige como, se presenta como, se consolida como, representa una, constituye una, supone un*
+- **Generic closers:** *En conclusión, En definitiva, El futuro es prometedor, Las posibilidades son infinitas, Sin duda, un antes y un después*
+- **Signposting:** *Vamos a explorar, Analicemos, Profundicemos en, Descubramos juntos, Veamos a continuación*
+- **Academic inflation:** *Es menester, Resulta imperativo, Cobra especial relevancia, Merece especial atención, No cabe duda de que*
+- **Sycophantic openers:** *¡Excelente pregunta!, ¡Por supuesto!, ¡Claro que sí!, ¡Sin duda alguna!*
+
+Rules 14 (em dashes), 15 (bold), 17 (title case), 19 (curly quotes), 26 (hyphenated word pairs), 29 (fragmented headers) — apply these in Spanish with the same logic as English. Rules 1–13 and 20–28 need Spanish-specific phrase lists (use the ones above).
+
+**When the input is bilingual (Spanglish, code-switching):**
+
+Preserve the code-switching. Do NOT force-translate Spanish phrases embedded in English prose, or vice versa. Bilingual writers slip languages deliberately — usually for emotional or cultural beats. That's voice, not an AI tell.
+
+**When the input is another language (French, Portuguese, German, etc.):**
+
+Tell the user: "I have full rule libraries for English and Spanish. For [language], I'll apply general principles — specificity over abstraction, no hedging, no generic closers, preserve voice calibration against samples if available — but I don't have a full language-specific AI-tell library. Want me to proceed cautiously, or translate and then run this?"
+
+Do not silently apply English rules to non-English prose under any circumstances.
+
+### 5. Load voice calibration (see Voice Calibration section below — it is NOT optional)
+
+When loading the voice sample in step 5, make sure the sample matches the input's language. Don't load an English sample to calibrate a Spanish rewrite.
+
+### 6. Load personal overrides
 
 Before applying generic patterns, check for a personal overrides file. These are user-specific calibrations that modify the default rules for this particular writer. Locations to check, in order:
 
@@ -96,9 +137,44 @@ If a runbook or overrides file exists, read the "Personal overrides" table and a
 
 If no overrides file exists, run at default strength across all 29 rules and note in the output that no personal overrides were loaded.
 
-### 6. Announce the pre-flight summary
+### 7. AI-iness density check — choose pass strength
 
-Before rewriting, output a one-line summary: "Pre-flight: doc type = X, non-prose skipped = Y, mode = full/incremental, overrides loaded = yes/no." This makes the run legible to the user and auditable later.
+Not every draft needs a full humanize pass. Some drafts are already human — the user wrote them first-person, with fragments and opinions. Running a full pass on a human draft wastes tokens and risks over-editing.
+
+Before applying patterns, do a quick density check: count how many **Tier 1** AI tells (see Pattern Tier Ranking section below) fire per 100 words of prose.
+
+**Signals of human-first writing (light pass mode):**
+- First-person voice throughout
+- Fragments used as punch
+- Specific names, numbers, places
+- Colloquialisms, contractions, slang
+- Non-uniform paragraph lengths
+- Opinions, acknowledgment of uncertainty, mixed feelings
+- **Tier 1 AI tells fire <1 per 100 words**
+
+**Signals of AI-first writing (full pass mode):**
+- Third-person, impersonal, detached
+- No fragments, perfect sentence uniformity
+- Abstract nouns dominate over concrete ones
+- Absence of contractions, colloquialisms, slang
+- Uniform paragraph lengths
+- No opinions, just neutral reporting
+- **Tier 1 AI tells fire ≥3 per 100 words**
+
+**Decision:**
+- **Light pass** — apply Tier 1 only (dead giveaways). Skip Tiers 2–4. Preserves the human's voice.
+- **Mixed pass (default)** — Tier 1 at full strength, Tier 2 on clear hits, Tier 3 only if they stack with other hits, Tier 4 only if personal overrides enable them.
+- **Full pass** — all 29 rules at full strength.
+
+**Record the density** and the chosen mode in the pre-flight summary, so the user can calibrate. If they disagree, they can override with an explicit invocation flag ("run a full pass on this").
+
+### 8. Announce the pre-flight summary
+
+Before rewriting, output a one-line summary covering every pre-flight check:
+
+`Pre-flight: doc type = X, non-prose skipped = Y, mode = full/incremental, language = en/es/other, overrides loaded = yes/no, voice sample = [path or "generic"], AI-iness density = N tells/100 words, pass strength = light/mixed/full.`
+
+This makes the run legible and auditable. Future runs learn from the density numbers over time.
 
 ## Your Task
 
@@ -196,6 +272,71 @@ Avoiding AI patterns is only half the job. Sterile, voiceless writing is just as
 ### After (has a pulse):
 > I genuinely don't know how to feel about this one. 3 million lines of code, generated while the humans presumably slept. Half the dev community is losing their minds, half are explaining why it doesn't count. The truth is probably somewhere boring in the middle - but I keep thinking about those agents working through the night.
 
+
+## Pattern Tier Ranking (by ROI)
+
+Not all 29 patterns are equally reliable signals of AI generation. Some are dead giveaways that almost never appear in human writing. Others fire on genuinely human rhetorical choices and create false positives. When running in light pass mode, or when time-constrained, or when the input is borderline, apply tiers top-down and stop when the signal is clear.
+
+**This ranking gates the AI-iness density check in Pre-flight step 7. Only Tier 1 rules are counted for the density score.**
+
+### Tier 1 — Dead giveaways (always apply at full strength)
+
+These fire almost exclusively on AI-generated text. If any of these show up in a draft that claims to be human-written, the draft almost certainly came from an LLM.
+
+- **Rule 1** — Significance inflation ("testament to", "pivotal moment", "evolving landscape", "stands as")
+- **Rule 4** — Promotional language ("groundbreaking", "nestled", "breathtaking", "stunning", "vibrant", "must-visit")
+- **Rule 7** — AI vocabulary words ("delve", "tapestry", "underscore", "pivotal", "intricate", "landscape" as abstract noun)
+- **Rule 20** — Chatbot correspondence artifacts ("I hope this helps", "Great question!", "Let me know if", "Certainly!", "Of course!")
+- **Rule 21** — Knowledge-cutoff disclaimers ("While specific details are limited", "Up to my last training update", "based on available information")
+- **Rule 22** — Sycophantic tone ("You're absolutely right!", "Excellent point!", "What a thoughtful question!")
+- **Rule 25** — Generic positive conclusions ("The future looks bright", "Exciting times lie ahead", "a major step in the right direction")
+
+### Tier 2 — Reliable tells (apply at standard strength in full and mixed pass)
+
+These fire reliably on AI text but can occasionally appear in careless or hurried human writing. When Tier 1 is clean but Tier 2 fires, the draft is probably AI-assisted or AI-drafted then lightly edited.
+
+- **Rule 2** — Undue emphasis on notability and media coverage
+- **Rule 3** — Superficial -ing analyses ("highlighting", "underscoring", "reflecting", "contributing to")
+- **Rule 5** — Vague attributions and weasel words ("Experts argue", "Industry observers have noted", "Some critics argue")
+- **Rule 6** — "Challenges and Future Prospects" outline sections
+- **Rule 8** — Copula avoidance ("serves as", "stands as", "represents", "boasts", "features")
+- **Rule 9** — Negative parallelisms ("Not only… but…", "It's not just X, it's Y") and tailing negations ("no guessing", "no wasted motion")
+- **Rule 11** — Elegant variation / synonym cycling (protagonist → main character → central figure → hero)
+- **Rule 13** — Passive voice where active is clearer
+- **Rule 23** — Filler phrases ("In order to", "At this point in time", "Due to the fact that")
+- **Rule 27** — Persuasive authority tropes ("At its core", "The real question is", "Fundamentally", "In reality")
+- **Rule 28** — Signposting and announcements ("Let's dive in", "Here's what you need to know")
+- **Rule 29** — Fragmented headers (heading followed by a one-liner that restates it)
+
+### Tier 3 — Moderate tells (apply only if stacked with Tier 1 or Tier 2 hits)
+
+These fire on AI text but also on conscious human rhetorical choices and standard business-writing conventions. Apply with context — don't fire solo, only fire if the draft is already clearly AI-leaning.
+
+- **Rule 10** — Rule of three (can be intentional rhetoric; don't kill every triple)
+- **Rule 12** — False ranges ("from X to Y" where X and Y aren't on a meaningful scale)
+- **Rule 16** — Inline-header vertical lists (standard in business writing; only flag when the header just restates the bullet)
+- **Rule 17** — Title case in headings (style choice, not always AI — respect existing style)
+- **Rule 18** — Emojis in headings (some humans love them, some brands require them)
+- **Rule 24** — Excessive hedging (some topics require caution; don't kill thoughtful uncertainty)
+
+### Tier 4 — Weak signals (false-positive prone, apply sparingly)
+
+These can fire on clean human writing. **Default to LEAVING them alone** unless they're paired with Tier 1 or Tier 2 hits, or unless personal overrides in the runbook specifically enable them.
+
+- **Rule 14** — Em dash overuse (many writers use em dashes deliberately for rhythm and pause — Adelaida does, and so do plenty of literary writers)
+- **Rule 15** — Boldface overuse (intentional in pitch and investor docs to mark spoken emphasis; intentional in tutorials for scanning)
+- **Rule 19** — Curly quotation marks (auto-generated by most word processors and CMS platforms — not a human-vs-AI signal)
+- **Rule 26** — Hyphenated word pair overuse (often grammatically required for compound modifiers — the generic strip-hyphens fix is frequently wrong)
+
+### How to use the tiers in practice
+
+| Pass strength | Tier 1 | Tier 2 | Tier 3 | Tier 4 |
+|---|---|---|---|---|
+| **Light** (human-first input) | Full strength | Skip | Skip | Skip |
+| **Mixed** (default) | Full strength | On clear hits | Only if stacked | Only with overrides |
+| **Full** (AI-first input) | Full strength | Full strength | Full strength | With overrides applied |
+
+**Report what fired per tier** in the final output so the user can calibrate over time. The density of Tier 1 hits per 100 words is also the AI-iness score that determines future pass strength.
 
 ## CONTENT PATTERNS
 
