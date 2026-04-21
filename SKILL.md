@@ -163,6 +163,24 @@ If a runbook or overrides file exists, read the "Personal overrides" table and a
 
 If no overrides file exists, run at default strength across all 29 rules and note in the output that no personal overrides were loaded.
 
+### 7.5 Load positive voice guide (pull-toward anchor)
+
+The fingerprint (step 5) and overrides (step 7) tell you what to STRIP. A positive voice guide tells you what to PULL TOWARD. Without it, humanizer leaves prose that is technically clean but emotionally generic. Neutral, not the writer's.
+
+Check for a positive voice guide in this order:
+
+1. `⚙️ Meta/rules/voice-style.md` in the current vault (if it exists) — positive principles, hook patterns, audience routing, and concrete anti-examples specific to this writer
+2. `~/.claude/skills/humanizer/voice-style.md` — global positive guide across all vaults
+3. None — proceed with fingerprint + overrides only, and note "no positive voice guide loaded"
+
+If a voice-style guide exists, read it before rewriting. Treat it as the rewrite's North Star:
+
+- After stripping AI tells, check each sentence against the positive principles. Does it lead with what the reader gets, or with what the writer did? Is the hook a contrarian preach or a specific scar? Is the vocabulary right for the surface (LinkedIn vs Substack vs investor)?
+- Use the audience-routing table to confirm vocabulary matches the surface. If the input is a LinkedIn post but the prose uses journal vocabulary (personal-pattern words like "floors," "the loop," named emotional concepts), flag and rewrite for the surface.
+- Use the concrete anti-examples table as a similarity check. If a draft sentence rhymes with a known-bad pattern from that table, rewrite it the way the table prescribes.
+
+Voice-style.md is a living file. Respect its `review_due` frontmatter — if the date has passed, note it in the output so the writer knows to refresh it.
+
 ### 8. AI-iness density check — choose pass strength
 
 Not every draft needs a full humanize pass. Some drafts are already human — the user wrote them first-person, with fragments and opinions. Running a full pass on a human draft wastes tokens and risks over-editing.
