@@ -10,7 +10,7 @@ Clone directly into Claude Code's skills directory:
 
 ```bash
 mkdir -p ~/.claude/skills
-git clone https://github.com/blader/humanizer.git ~/.claude/skills/humanizer
+git clone https://github.com/adelaidasofia/humanizer.git ~/.claude/skills/humanizer
 ```
 
 Or copy the skill file manually if you already have this repo cloned:
@@ -26,7 +26,7 @@ Clone directly into OpenCode's skills directory:
 
 ```bash
 mkdir -p ~/.config/opencode/skills
-git clone https://github.com/blader/humanizer.git ~/.config/opencode/skills/humanizer
+git clone https://github.com/adelaidasofia/humanizer.git ~/.config/opencode/skills/humanizer
 ```
 
 Or copy the skill file manually if you already have this repo cloned:
@@ -177,8 +177,23 @@ The skill also includes a final "obviously AI generated" audit pass and a second
 - [Wikipedia: Signs of AI writing](https://en.wikipedia.org/wiki/Wikipedia:Signs_of_AI_writing) - Primary source
 - [WikiProject AI Cleanup](https://en.wikipedia.org/wiki/Wikipedia:WikiProject_AI_Cleanup) - Maintaining organization
 
+## What this fork adds
+
+Forked from [@blader/humanizer](https://github.com/blader/humanizer). Upstream covers the 29 Wikipedia "Signs of AI writing" patterns. This fork adds:
+
+- **Voice fingerprint mode (v3.0):** statistical fingerprint built from the author's own writing corpus. Rewrites are anchored to actual sentence rhythm, vocabulary, and quirks rather than generic "clean" prose. Run `voice-indexer.py` once on a journal corpus, re-run monthly. `--diff` mode scores any draft 0-100 against the fingerprint.
+- **Bilingual rule library (v2.7):** Spanish-language patterns alongside English, with handling for bilingual and Spanglish text.
+- **Adaptive pass strength (v2.7):** AI-iness density check chooses light, mixed, or full pass automatically. Four-tier ROI-ranked pattern ordering hits the highest-signal rules first under time pressure.
+- **Mandatory voice calibration (v2.6):** auto-loads the author's voice profile if one is indexed; refuses to run "generic clean" without explicit override.
+- **Pre-flight doc-type detection + non-prose skip (v2.6):** code blocks, frontmatter, YAML, and tables are skipped; only prose is rewritten.
+- **Personal overrides file:** `~/.claude/voice-overrides.md` lets the author preserve specific phrases that the rule library would otherwise strip.
+- **Lessons-learned log:** runbook captures friction during runs and feeds back into the rule ordering.
+
 ## Version History
 
+- **3.0.0** - Voice fingerprint mode: statistical fingerprint from journal corpus anchors rewrites to actual author patterns, not generic "sounds human." New `--diff` mode scores how close any text is to the author's voice. Indexer script: `voice-indexer.py` (run once, re-run monthly).
+- **2.7.0** - Spanish-language rule library (with bilingual/Spanglish handling), AI-iness density check for adaptive pass strength (light/mixed/full), four-tier ROI-ranked pattern ordering so time-constrained runs hit the highest-signal rules first.
+- **2.6.0** - Pre-flight doc-type detection, non-prose skip pass, incremental mode, mandatory voice calibration with auto-load, personal overrides file support, runbook lessons-learned logging.
 - **2.5.1** - Added a passive-voice / subjectless-fragment rule, raising the total to 29 patterns
 - **2.5.0** - Added patterns for persuasive framing, signposting, and fragmented headers; expanded negative parallelisms to cover tailing negations; tightened wording around em dash overuse; fixed frontmatter wording to use "filler phrases"
 - **2.4.0** - Added voice calibration: match the user's personal writing style from samples
@@ -192,3 +207,13 @@ The skill also includes a final "obviously AI generated" audit pass and a second
 ## License
 
 MIT
+
+---
+
+## Built by Mycelium AI
+
+Mycelium AI builds verification harnesses around AI agents so memory compounds instead of corrupts. Humanizer is the writing-side primitive: it keeps an author's voice intact when AI is in the loop.
+
+The full agent harness is open-source at [ai-brain-starter](https://github.com/adelaidasofia/ai-brain-starter): markdown vault as ground truth, deterministic pre-write hooks, bi-temporal rule lineage, advisory-panel journaling, knowledge graph extraction, drift detection, and a session-end cascade that files decisions and captures automatically.
+
+For the runtime layer (multi-tenant, audit-logged, prompt-workflow library, citation verification): [myceliumai.co](https://myceliumai.co).
