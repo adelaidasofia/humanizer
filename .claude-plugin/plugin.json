@@ -1,9 +1,10 @@
 {
   "name": "humanizer",
   "description": "Remove signs of AI-generated writing from text and rewrite in the author's actual voice. Based on Wikipedia's Signs of AI Writing guide plus a statistical voice fingerprint built from the author's own corpus.",
-  "version": "2.7.0",
+  "version": "3.0.0",
   "author": {
-    "name": "Adelaida Diaz-Roa"
+    "name": "Mycelium AI",
+    "url": "https://myceliumai.co"
   },
   "repository": "https://github.com/adelaidasofia/humanizer",
   "license": "MIT"
