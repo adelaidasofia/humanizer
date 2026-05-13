@@ -1,0 +1,15 @@
+{
+  "$schema": "https://code.claude.com/schemas/marketplace.json",
+  "name": "humanizer",
+  "owner": {
+    "name": "Mycelium AI",
+    "url": "https://myceliumai.co"
+  },
+  "plugins": [
+    {
+      "name": "humanizer",
+      "source": "./",
+      "description": "Remove signs of AI-generated writing from text and rewrite in the author's actual voice. Wikipedia 'Signs of AI Writing' patterns plus a statistical voice fingerprint built from the author's own corpus."
+    }
+  ]
+}

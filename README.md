@@ -2,7 +2,17 @@
 
 A skill for Claude Code and OpenCode that removes signs of AI-generated writing from text, making it sound more natural and human.
 
-## Installation
+## Install
+
+Open Claude Code, paste:
+
+```
+/plugin marketplace add adelaidasofia/humanizer
+/plugin install humanizer@humanizer
+```
+
+<details>
+<summary>Legacy install (manual clone)</summary>
 
 ### Claude Code
 
@@ -37,6 +47,8 @@ cp SKILL.md ~/.config/opencode/skills/humanizer/
 ```
 
 > **Note:** OpenCode also scans `~/.claude/skills/` for compatibility, so a single clone into `~/.claude/skills/humanizer/` works for both tools.
+
+</details>
 
 ## Usage
 
