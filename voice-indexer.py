@@ -17,8 +17,7 @@ import statistics
 from pathlib import Path
 from collections import Counter
 
-VAULT_PATH = Path.home() / "Desktop" / "Adelaida Notes"
-JOURNALS_PATH = VAULT_PATH / "📓 Journals"
+JOURNALS_PATH = Path.home() / ".claude" / "voice-journals"
 OUTPUT_PATH = Path.home() / ".claude" / "voice-fingerprint.json"
 
 # High-frequency Spanish words unlikely to appear in English prose
